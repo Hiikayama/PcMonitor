@@ -59,7 +59,7 @@ namespace PcMonitor.Application.UseCases
 
             // 3. Вычислить топ-потребителей (domain service)
             var topConsumers = new List<TopConsumer>();
-            foreach (var metric in new[] { MetricType.Cpu, MetricType.Memory, MetricType.DiskIo })
+            foreach (var metric in new[] { MetricType.Cpu, MetricType.Memory, MetricType.DiskIo, MetricType.Gpu })
             {
                 topConsumers.AddRange(TopConsumerCalculator.Calculate(
                     snapshots,

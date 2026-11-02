@@ -13,6 +13,8 @@ public sealed class ProcessDataSource : IDataSource<IReadOnlyList<ProcessSnapsho
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     private readonly Dictionary<int, ProcessSample> _previous = new();
+    private readonly Dictionary<string, PerformanceCounter> _gpuCounters = new();
+    private readonly object _gpuGate = new();
     private readonly object _gate = new();
     private long _firstSampleLogged; // для "одноразового" лога
 
@@ -27,6 +29,8 @@ public sealed class ProcessDataSource : IDataSource<IReadOnlyList<ProcessSnapsho
         // Диагностика: один раз за жизнь экземпляра — проверка admin
         LogPrivilegeOnce();
 
+        var gpuByPid = ReadGpuByPid();
+
         foreach (var p in Process.GetProcesses())
         {
             using (p)
@@ -37,13 +41,17 @@ public sealed class ProcessDataSource : IDataSource<IReadOnlyList<ProcessSnapsho
                 try
                 {
                     var name = p.ProcessName;
+                    var gpuPercent = gpuByPid.TryGetValue(p.Id, out var g)
+                        ? Math.Clamp(g, 0, 100)
+                        : 0;
+                    var gpuUsage = new GpuProcessUsage(gpuPercent);
                     var (ioRead, ioWrite) = GetProcessIo(p.Id);
                     var (cpu, disk) = ComputeCpuAndDisk(
                         p.Id, p.TotalProcessorTime, ioRead, ioWrite, now);
                     var mem = new ProcessMemoryUsage(p.WorkingSet64);
 
                     result.Add(new ProcessSnapshot(
-                        new ProcessIdentifier(p.Id, name), cpu, mem, disk));
+                        new ProcessIdentifier(p.Id, name), cpu, mem, disk, gpuUsage));
                 }
                 catch (Exception ex) when (
                     ex is InvalidOperationException
@@ -190,6 +198,82 @@ public sealed class ProcessDataSource : IDataSource<IReadOnlyList<ProcessSnapsho
         public ulong ReadTransferCount;
         public ulong WriteTransferCount;
         public ulong OtherTransferCount;
+    }
+
+    private Dictionary<int, double> ReadGpuByPid()
+    {
+        var result = new Dictionary<int, double>();
+        if (_gpuCounters.Count == 0 && !TrySeedGpuCounters())
+            return result;
+
+        lock (_gpuGate)
+        {
+            foreach (var (instance, counter) in _gpuCounters)
+            {
+                var pid = ParseGpuInstancePid(instance);
+                if (pid is null) continue;
+
+                // NextValue() на прогретом счётчике даёт реальную дельту.
+                var value = counter.NextValue();
+                if (value <= 0) continue;
+
+                result[pid.Value] = result.GetValueOrDefault(pid.Value) + value;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Создаёт счётчики для всех GPU Engine инстансов и прогревает их
+    /// (первый NextValue возвращает 0). Возвращает false, если категория
+    /// недоступна (нет GPU-драйвера, отключены perf counters).
+    /// </summary>
+    private bool TrySeedGpuCounters()
+    {
+        lock (_gpuGate)
+        {
+            if (_gpuCounters.Count > 0) return true;
+
+            try
+            {
+                var category = new PerformanceCounterCategory("GPU Engine");
+                var instances = category.GetInstanceNames();
+                if (instances.Length == 0) return false;
+
+                foreach (var instance in instances)
+                {
+                    var counter = new PerformanceCounter(
+                        "GPU Engine", "Utilization Percentage", instance);
+                    counter.NextValue();   // прогрев baseline
+                    _gpuCounters[instance] = counter;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GPU-PER-PROCESS] Counters unavailable: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Инстанс выглядит так: pid_1234_luid_0x00000000_..._engtype_3D.
+    /// Извлекаем 1234.
+    /// </summary>
+    private static int? ParseGpuInstancePid(string instance)
+    {
+        const string prefix = "pid_";
+        if (!instance.StartsWith(prefix, StringComparison.Ordinal)) return null;
+
+        var start = prefix.Length;
+        var end = instance.IndexOf('_', start);
+        if (end < 0) return null;
+
+        return int.TryParse(instance.AsSpan(start, end - start), out var pid)
+            ? pid
+            : null;
     }
 
     private record ProcessSample(

@@ -38,6 +38,7 @@ public sealed class MonitorDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.SnapshotId);
             e.HasIndex(x => x.Pid);
+            e.Property(x => x.GpuPercent).HasDefaultValue(0.0);
         });
 
         mb.Entity<SystemEventRecord>(e =>

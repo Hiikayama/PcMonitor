@@ -10,4 +10,5 @@ public sealed record ProcessSnapshot(
     ProcessIdentifier Process,
     CpuUsage Cpu,
     ProcessMemoryUsage Memory,
-    DiskIoRate DiskIo);
+    DiskIoRate DiskIo,
+    GpuProcessUsage Gpu = default);

@@ -99,6 +99,11 @@ namespace PcMonitor.Infrastructure.Persistence.Migrations
                     b.Property<long>("DiskWriteBps")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("GpuPercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("REAL")
+                        .HasDefaultValue(0.0);
+
                     b.Property<long>("MemoryWorkingSetBytes")
                         .HasColumnType("INTEGER");
 

@@ -31,6 +31,7 @@ public static class DomainMapper
         DiskReadBps = domain.DiskIo.ReadBytesPerSecond,
         DiskWriteBps = domain.DiskIo.WriteBytesPerSecond,
 
+        // Системный GPU — здесь, в SnapshotRecord.
         GpuDeviceName = domain.Gpu?.DeviceName,
         GpuUtilizationPercent = domain.Gpu?.UtilizationPercent,
         GpuTemperatureCelsius = domain.Gpu?.TemperatureCelsius,
@@ -47,6 +48,9 @@ public static class DomainMapper
                 MemoryWorkingSetBytes = p.Memory.WorkingSetBytes,
                 DiskReadBps = p.DiskIo.ReadBytesPerSecond,
                 DiskWriteBps = p.DiskIo.WriteBytesPerSecond,
+
+                // Per-process GPU — здесь, в ProcessRecord.
+                GpuPercent = p.Gpu.Percent,
             })
             .ToList(),
     };
@@ -71,7 +75,9 @@ public static class DomainMapper
             Process: new ProcessIdentifier(p.Pid, p.Name),
             Cpu: new CpuUsage(p.CpuPercent),
             Memory: new ProcessMemoryUsage(p.MemoryWorkingSetBytes),
-            DiskIo: new DiskIoRate(p.DiskReadBps, p.DiskWriteBps))).ToList(),
+            DiskIo: new DiskIoRate(p.DiskReadBps, p.DiskWriteBps),
+            // Per-process GPU — пятый параметр ProcessSnapshot.
+            Gpu: new GpuProcessUsage(p.GpuPercent))).ToList(),
         id: rec.Id);
 
     // ============================================================
@@ -126,7 +132,6 @@ public static class DomainMapper
 
     // ============================================================
     // Anomaly ↔ AnomalyRecord
-    //   public — используется репозиторием при upsert.
     // ============================================================
 
     public static AnomalyRecord AnomalyRecord(Anomaly domain, Guid reportId) => new()
@@ -138,16 +143,12 @@ public static class DomainMapper
         Reason = domain.Reason,
         ObservedValue = domain.ObservedValue,
         Threshold = domain.Threshold,
-        // Инвариант сохраняется: либо оба поля null, либо оба заполнены.
         CulpritPid = domain.Culprit?.Pid,
         CulpritName = domain.Culprit?.Name,
     };
 
     public static Anomaly ToDomain(AnomalyRecord rec)
     {
-        // ProcessIdentifier? восстанавливаем только если оба поля заданы.
-        // IsNullOrWhiteSpace имеет [NotNullWhen(false)] — компилятор знает,
-        // что ниже CulpritName non-null, «!» не нужен.
         ProcessIdentifier? culprit = null;
         if (rec.CulpritPid is { } pid && !string.IsNullOrWhiteSpace(rec.CulpritName))
         {

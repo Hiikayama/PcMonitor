@@ -10,6 +10,7 @@ public sealed class ProcessRecord
     public long MemoryWorkingSetBytes { get; set; }
     public long DiskReadBps { get; set; }
     public long DiskWriteBps { get; set; }
+    public double GpuPercent { get; set; }
 
     public SnapshotRecord Snapshot { get; set; } = null!;
 }

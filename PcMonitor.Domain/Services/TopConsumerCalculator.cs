@@ -18,7 +18,7 @@ public static class TopConsumerCalculator
         ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(topN);
 
-        if (snapshots.Count == 0 || metric == MetricType.Gpu)
+        if (snapshots.Count == 0)
             return Array.Empty<TopConsumer>();
 
         return snapshots
@@ -43,6 +43,7 @@ public static class TopConsumerCalculator
         MetricType.Cpu => p.Cpu.Percent,
         MetricType.Memory => p.Memory.WorkingSetBytes,
         MetricType.DiskIo => p.DiskIo.TotalBytesPerSecond,
+        MetricType.Gpu => p.Gpu.Percent,
         _ => throw new ArgumentOutOfRangeException(nameof(metric))
     };
 }

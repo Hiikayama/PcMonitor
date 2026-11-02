@@ -95,7 +95,7 @@ public sealed class PdfReportExporter : IReportExporter
                     col.Item().PaddingTop(15).Text("Топ-потребители:")
                         .FontSize(14).Bold();
 
-                    foreach (var metric in new[] { MetricType.Cpu, MetricType.Memory, MetricType.DiskIo })
+                    foreach (var metric in new[] { MetricType.Cpu, MetricType.Memory, MetricType.DiskIo, MetricType.Gpu })
                     {
                         var tops = report.GetTopConsumers(metric);
                         if (tops.Count == 0) continue;
@@ -312,6 +312,28 @@ public sealed class PdfReportExporter : IReportExporter
             if (totalVram > 0)
                 vramText += $" из {FormatBytes(totalVram)}";
             parts.Add(vramText);
+        }
+
+        // Топ-процесс по GPU — если есть данные
+        var topGpuProcess = snapshots
+            .Where(s => s.Gpu is not null)
+            .SelectMany(s => s.Processes)
+            .Where(p => p.Gpu.Percent >= 0.5)
+            .GroupBy(p => p.Process)
+            .Select(g => new
+            {
+                Process = g.Key,
+                Avg = g.Average(p => p.Gpu.Percent),
+                Peak = g.Max(p => p.Gpu.Percent)
+            })
+            .OrderByDescending(x => x.Avg)
+            .FirstOrDefault();
+
+        if (topGpuProcess is not null)
+        {
+            parts.Add(
+                $"горячий процесс — {topGpuProcess.Process} " +
+                $"(ср. {topGpuProcess.Avg:F1}%, пик {topGpuProcess.Peak:F1}%)");
         }
 
         return string.Join(" • ", parts) + ".";

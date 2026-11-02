@@ -60,10 +60,22 @@ public sealed class ResourceSnapshot
 
         return metric switch
         {
-            MetricType.Cpu => _processes.MaxBy(p => p.Cpu.Percent),
-            MetricType.Memory => _processes.MaxBy(p => p.Memory.WorkingSetBytes),
-            MetricType.DiskIo => _processes.MaxBy(p => p.DiskIo.TotalBytesPerSecond),
-            MetricType.Gpu => null,
+            MetricType.Cpu => _processes
+                .Where(p => p.Cpu.Percent >= 0.5)
+                .MaxBy(p => p.Cpu.Percent),
+
+            MetricType.Memory => _processes
+                .Where(p => p.Memory.WorkingSetBytes >= 1024 * 1024)
+                .MaxBy(p => p.Memory.WorkingSetBytes),
+
+            MetricType.DiskIo => _processes
+                .Where(p => p.DiskIo.TotalBytesPerSecond >= 10 * 1024)
+                .MaxBy(p => p.DiskIo.TotalBytesPerSecond),
+
+            MetricType.Gpu => _processes
+                .Where(p => p.Gpu.Percent >= 0.5)
+                .MaxBy(p => p.Gpu.Percent),
+
             _ => throw new ArgumentOutOfRangeException(nameof(metric))
         };
     }
